@@ -3,127 +3,266 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestione Materiali</title>
+    <title>Gestione Materiali Pro</title>
     
-    <!-- Collegamento al Manifest della PWA -->
+    <!-- PWA -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#3b82f6">
+    <meta name="theme-color" content="#1e3a8a">
     <link rel="apple-touch-icon" href="icon-512.png">
 
+    <!-- Fonts e Icone -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    animation: {
+                        'slide-in': 'slideIn 0.3s ease-out',
+                        'fade-in': 'fadeIn 0.3s ease-out'
+                    },
+                    keyframes: {
+                        slideIn: { '0%': { transform: 'translateY(10px)', opacity: 0 }, '100%': { transform: 'translateY(0)', opacity: 1 } },
+                        fadeIn: { '0%': { opacity: 0 }, '100%': { opacity: 1 } }
+                    }
+                }
+            }
+        }
+    </script>
 </head>
-<body class="bg-slate-50 min-h-screen text-slate-800 font-sans selection:bg-blue-200">
+<body class="bg-gradient-to-br from-slate-100 to-slate-200 min-h-screen text-slate-800 font-sans pb-20">
 
-    <div class="max-w-md mx-auto p-4 pt-8">
-        <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
-            <!-- Header -->
-            <div class="bg-blue-500 p-6 text-white text-center">
-                <i class="fas fa-boxes text-4xl mb-2"></i>
-                <h1 class="text-2xl font-bold">Magazzino</h1>
-                <p class="text-blue-100 text-sm">Gestione Materiali</p>
+    <!-- Container Notifiche (Toast) -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <div class="max-w-2xl mx-auto p-4 pt-6">
+        
+        <!-- Header -->
+        <header class="bg-blue-900 text-white rounded-2xl shadow-lg p-6 mb-6 relative overflow-hidden">
+            <div class="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
+                <i class="fas fa-cubes text-9xl"></i>
             </div>
+            <div class="relative z-10">
+                <h1 class="text-3xl font-bold tracking-tight mb-1">Inventario</h1>
+                <p class="text-blue-200 font-medium text-sm"><span id="totalItems">0</span> materiali registrati</p>
+            </div>
+        </header>
 
-            <div class="p-6">
-                <!-- Form di inserimento -->
-                <form id="materialForm" class="mb-6 flex gap-2">
-                    <input type="text" id="itemName" placeholder="Nome materiale..." required
-                        class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
-                    <input type="number" id="itemQty" placeholder="Qtà" required min="0"
-                        class="w-20 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
-                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition shadow-md">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                </form>
-
-                <!-- Lista Materiali -->
-                <ul id="materialList" class="space-y-3">
-                    <!-- Gli elementi verranno inseriti qui via JavaScript -->
-                </ul>
-                
-                <!-- Messaggio vuoto -->
-                <div id="emptyState" class="hidden text-center text-gray-400 py-6">
-                    <i class="fas fa-box-open text-3xl mb-2"></i>
-                    <p>Nessun materiale in inventario.</p>
+        <!-- Pannello di Controllo (Aggiunta e Ricerca) -->
+        <div class="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-white p-5 mb-6">
+            
+            <!-- Form Aggiunta -->
+            <form id="materialForm" class="flex flex-col sm:flex-row gap-3 mb-4">
+                <div class="relative flex-1">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i class="fas fa-tag text-gray-400"></i>
+                    </div>
+                    <input type="text" id="itemName" placeholder="Nome nuovo materiale..." required
+                        class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
                 </div>
+                
+                <div class="flex gap-3">
+                    <div class="relative w-28">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i class="fas fa-hashtag text-gray-400"></i>
+                        </div>
+                        <input type="number" id="itemQty" placeholder="Qtà" required min="1" value="1"
+                            class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-center font-semibold">
+                    </div>
+                    
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center gap-2 font-medium active:scale-95">
+                        <i class="fas fa-plus"></i> <span class="hidden sm:inline">Aggiungi</span>
+                    </button>
+                </div>
+            </form>
+
+            <!-- Barra di Ricerca -->
+            <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="fas fa-search text-gray-400"></i>
+                </div>
+                <input type="text" id="searchInput" placeholder="Cerca materiale in magazzino..." 
+                    class="w-full pl-10 pr-4 py-2 bg-gray-100/50 border-none rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all text-sm">
+            </div>
+        </div>
+
+        <!-- Lista Materiali -->
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[300px]">
+            <ul id="materialList" class="divide-y divide-gray-100">
+                <!-- Elementi dinamici -->
+            </ul>
+            
+            <!-- Stato Vuoto -->
+            <div id="emptyState" class="hidden flex flex-col items-center justify-center py-16 px-4 text-center animate-fade-in">
+                <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-4 text-blue-300">
+                    <i class="fas fa-box-open text-4xl"></i>
+                </div>
+                <h3 class="text-lg font-semibold text-gray-700">Nessun materiale trovato</h3>
+                <p class="text-gray-400 text-sm mt-1 max-w-xs">Il magazzino è vuoto oppure la ricerca non ha prodotto risultati.</p>
             </div>
         </div>
     </div>
 
     <script>
-        // Registrazione del Service Worker per la PWA
+        // PWA Setup
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js')
-                    .then(reg => console.log('Service Worker registrato con successo.', reg))
-                    .catch(err => console.error('Errore registrazione Service Worker:', err));
+                navigator.serviceWorker.register('./service-worker.js').catch(err => console.log('SW Error:', err));
             });
         }
 
-        // Logica dell'App e Persistenza Dati (LocalStorage)
+        // --- LOGICA APPLICAZIONE ---
         const form = document.getElementById('materialForm');
         const list = document.getElementById('materialList');
         const emptyState = document.getElementById('emptyState');
+        const searchInput = document.getElementById('searchInput');
+        const totalItemsCounter = document.getElementById('totalItems');
+        const toastContainer = document.getElementById('toast-container');
+        
         let materials = JSON.parse(localStorage.getItem('materials')) || [];
 
-        function saveAndRender() {
-            localStorage.setItem('materials', JSON.stringify(materials));
-            renderList();
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            const colors = type === 'success' ? 'bg-green-500' : (type === 'error' ? 'bg-red-500' : 'bg-blue-500');
+            const icon = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle');
+            
+            toast.className = `${colors} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in text-sm font-medium`;
+            toast.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
+            
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-10px)';
+                toast.style.transition = 'all 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
         }
 
-        function renderList() {
+        function saveAndRender(searchTerm = '') {
+            localStorage.setItem('materials', JSON.stringify(materials));
+            renderList(searchTerm);
+        }
+
+        function renderList(searchTerm = '') {
             list.innerHTML = '';
-            if (materials.length === 0) {
+            
+            // Filtro ricerca
+            const filteredMaterials = materials.filter(item => 
+                item.name.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            // Aggiorna contatore
+            totalItemsCounter.innerText = materials.length;
+
+            if (filteredMaterials.length === 0) {
                 emptyState.classList.remove('hidden');
+                emptyState.classList.add('flex');
             } else {
                 emptyState.classList.add('hidden');
-                materials.forEach((item, index) => {
+                emptyState.classList.remove('flex');
+                
+                filteredMaterials.forEach((item) => {
+                    // Troviamo l'indice reale nell'array originale per evitare bug quando si modifica filtrando
+                    const originalIndex = materials.findIndex(m => m.name === item.name);
+                    
                     const li = document.createElement('li');
-                    li.className = "flex items-center justify-between bg-slate-100 p-3 rounded-lg border border-slate-200 transition-all";
+                    li.className = "flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-gray-50 transition-colors animate-slide-in gap-4";
+                    
+                    // Stile visivo per le quantità basse
+                    const isLowStock = item.quantity === 0;
+                    const stockBadge = isLowStock ? 
+                        `<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold ml-2">Esaurito</span>` : '';
+
                     li.innerHTML = `
-                        <span class="font-medium flex-1">${item.name}</span>
-                        <div class="flex items-center gap-3">
-                            <button onclick="updateQty(${index}, -1)" class="w-8 h-8 rounded-full bg-white text-red-500 shadow hover:bg-red-50 transition"><i class="fas fa-minus"></i></button>
-                            <span class="font-bold min-w-[2rem] text-center">${item.quantity}</span>
-                            <button onclick="updateQty(${index}, 1)" class="w-8 h-8 rounded-full bg-white text-green-500 shadow hover:bg-green-50 transition"><i class="fas fa-plus"></i></button>
-                            <button onclick="deleteItem(${index})" class="text-gray-400 hover:text-red-500 ml-2 transition"><i class="fas fa-trash"></i></button>
+                        <div class="flex-1">
+                            <h4 class="font-semibold text-gray-800 text-lg flex items-center">${item.name} ${stockBadge}</h4>
+                            <p class="text-sm text-gray-500">ID: #${String(originalIndex + 1).padStart(4, '0')}</p>
                         </div>
+                        
+                        <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 border border-gray-200">
+                            <button onclick="updateQty(${originalIndex}, -1)" class="w-10 h-10 rounded-md bg-white text-gray-600 shadow-sm hover:text-red-600 hover:bg-red-50 transition-all focus:ring-2 focus:ring-red-200">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            
+                            <div class="w-14 text-center font-bold text-lg text-gray-800">
+                                ${item.quantity}
+                            </div>
+                            
+                            <button onclick="updateQty(${originalIndex}, 1)" class="w-10 h-10 rounded-md bg-white text-gray-600 shadow-sm hover:text-green-600 hover:bg-green-50 transition-all focus:ring-2 focus:ring-green-200">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        
+                        <button onclick="deleteItem(${originalIndex})" class="w-10 h-10 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all sm:ml-2 mt-2 sm:mt-0 self-end sm:self-auto">
+                            <i class="fas fa-trash-alt"></i>
+                        </button>
                     `;
                     list.appendChild(li);
                 });
             }
         }
 
+        // Eventi
         form.addEventListener('submit', (e) => {
             e.preventDefault();
             const nameInput = document.getElementById('itemName');
             const qtyInput = document.getElementById('itemQty');
+            const name = nameInput.value.trim();
             
-            materials.push({
-                name: nameInput.value.trim(),
-                quantity: parseInt(qtyInput.value)
-            });
+            // Controllo duplicati
+            const existingIndex = materials.findIndex(m => m.name.toLowerCase() === name.toLowerCase());
+            
+            if(existingIndex >= 0) {
+                materials[existingIndex].quantity += parseInt(qtyInput.value);
+                showToast(`Quantità aggiornata per ${name}`, 'info');
+            } else {
+                materials.push({
+                    name: name,
+                    quantity: parseInt(qtyInput.value)
+                });
+                showToast(`Materiale ${name} aggiunto`, 'success');
+            }
             
             nameInput.value = '';
-            qtyInput.value = '';
+            qtyInput.value = '1';
+            nameInput.focus();
+            
+            // Resetta la ricerca quando si aggiunge
+            searchInput.value = ''; 
             saveAndRender();
         });
 
-        window.updateQty = (index, delta) => {
-            materials[index].quantity += delta;
-            if (materials[index].quantity < 0) materials[index].quantity = 0;
-            saveAndRender();
-        }
+        searchInput.addEventListener('input', (e) => {
+            renderList(e.target.value);
+        });
 
-        window.deleteItem = (index) => {
-            if(confirm("Vuoi rimuovere questo materiale?")) {
-                materials.splice(index, 1);
-                saveAndRender();
+        window.updateQty = (index, delta) => {
+            const oldQty = materials[index].quantity;
+            materials[index].quantity += delta;
+            
+            if (materials[index].quantity < 0) {
+                materials[index].quantity = 0;
+            }
+            
+            if (oldQty !== materials[index].quantity) {
+                saveAndRender(searchInput.value); // Mantiene il filtro attivo
             }
         }
 
-        // Inizializzazione
+        window.deleteItem = (index) => {
+            const itemName = materials[index].name;
+            if(confirm(`Sei sicuro di voler eliminare "${itemName}" dall'inventario?`)) {
+                materials.splice(index, 1);
+                showToast(`${itemName} eliminato`, 'error');
+                saveAndRender(searchInput.value);
+            }
+        }
+
+        // Avvio
         renderList();
     </script>
 </body>
