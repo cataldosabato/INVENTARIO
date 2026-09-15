@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestione Materiali</title>
+    
+    <!-- Collegamento al Manifest della PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#3b82f6">
+    <link rel="apple-touch-icon" href="icon-512.png">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 font-sans selection:bg-blue-200">
+
+    <div class="max-w-md mx-auto p-4 pt-8">
+        <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+            <!-- Header -->
+            <div class="bg-blue-500 p-6 text-white text-center">
+                <i class="fas fa-boxes text-4xl mb-2"></i>
+                <h1 class="text-2xl font-bold">Magazzino</h1>
+                <p class="text-blue-100 text-sm">Gestione Materiali</p>
+            </div>
+
+            <div class="p-6">
+                <!-- Form di inserimento -->
+                <form id="materialForm" class="mb-6 flex gap-2">
+                    <input type="text" id="itemName" placeholder="Nome materiale..." required
+                        class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                    <input type="number" id="itemQty" placeholder="Qtà" required min="0"
+                        class="w-20 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition shadow-md">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </form>
+
+                <!-- Lista Materiali -->
+                <ul id="materialList" class="space-y-3">
+                    <!-- Gli elementi verranno inseriti qui via JavaScript -->
+                </ul>
+                
+                <!-- Messaggio vuoto -->
+                <div id="emptyState" class="hidden text-center text-gray-400 py-6">
+                    <i class="fas fa-box-open text-3xl mb-2"></i>
+                    <p>Nessun materiale in inventario.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Registrazione del Service Worker per la PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./service-worker.js')
+                    .then(reg => console.log('Service Worker registrato con successo.', reg))
+                    .catch(err => console.error('Errore registrazione Service Worker:', err));
+            });
+        }
+
+        // Logica dell'App e Persistenza Dati (LocalStorage)
+        const form = document.getElementById('materialForm');
+        const list = document.getElementById('materialList');
+        const emptyState = document.getElementById('emptyState');
+        let materials = JSON.parse(localStorage.getItem('materials')) || [];
+
+        function saveAndRender() {
+            localStorage.setItem('materials', JSON.stringify(materials));
+            renderList();
+        }
+
+        function renderList() {
+            list.innerHTML = '';
+            if (materials.length === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+                materials.forEach((item, index) => {
+                    const li = document.createElement('li');
+                    li.className = "flex items-center justify-between bg-slate-100 p-3 rounded-lg border border-slate-200 transition-all";
+                    li.innerHTML = `
+                        <span class="font-medium flex-1">${item.name}</span>
+                        <div class="flex items-center gap-3">
+                            <button onclick="updateQty(${index}, -1)" class="w-8 h-8 rounded-full bg-white text-red-500 shadow hover:bg-red-50 transition"><i class="fas fa-minus"></i></button>
+                            <span class="font-bold min-w-[2rem] text-center">${item.quantity}</span>
+                            <button onclick="updateQty(${index}, 1)" class="w-8 h-8 rounded-full bg-white text-green-500 shadow hover:bg-green-50 transition"><i class="fas fa-plus"></i></button>
+                            <button onclick="deleteItem(${index})" class="text-gray-400 hover:text-red-500 ml-2 transition"><i class="fas fa-trash"></i></button>
+                        </div>
+                    `;
+                    list.appendChild(li);
+                });
+            }
+        }
+
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const nameInput = document.getElementById('itemName');
+            const qtyInput = document.getElementById('itemQty');
+            
+            materials.push({
+                name: nameInput.value.trim(),
+                quantity: parseInt(qtyInput.value)
+            });
+            
+            nameInput.value = '';
+            qtyInput.value = '';
+            saveAndRender();
+        });
+
+        window.updateQty = (index, delta) => {
+            materials[index].quantity += delta;
+            if (materials[index].quantity < 0) materials[index].quantity = 0;
+            saveAndRender();
+        }
+
+        window.deleteItem = (index) => {
+            if(confirm("Vuoi rimuovere questo materiale?")) {
+                materials.splice(index, 1);
+                saveAndRender();
+            }
+        }
+
+        // Inizializzazione
+        renderList();
+    </script>
+</body>
+</html>
