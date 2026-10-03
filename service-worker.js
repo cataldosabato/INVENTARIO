@@ -1,4 +1,4 @@
-const CACHE_NAME = 'magazzino-v3';
+const CACHE_NAME = 'magazzino-v4';
 const urlsToCache = [
   './',
   './index.html',
