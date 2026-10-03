@@ -2,18 +2,24 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestione Materiali </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gestione Magazzino PWA</title>
     
-    <!-- PWA -->
+    <!-- PWA Meta -->
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#1e3a8a">
+    <meta name="theme-color" content="#1e293b">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="apple-touch-icon" href="icon-512.png">
 
     <!-- Fonts e Icone -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     
+    <!-- Librerie PDF (jsPDF + AutoTable) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -21,249 +27,671 @@
             theme: {
                 extend: {
                     fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    animation: {
-                        'slide-in': 'slideIn 0.3s ease-out',
-                        'fade-in': 'fadeIn 0.3s ease-out'
-                    },
-                    keyframes: {
-                        slideIn: { '0%': { transform: 'translateY(10px)', opacity: 0 }, '100%': { transform: 'translateY(0)', opacity: 1 } },
-                        fadeIn: { '0%': { opacity: 0 }, '100%': { opacity: 1 } }
+                    colors: {
+                        brand: { 50: '#f0fdf4', 100: '#dcfce7', 500: '#22c55e', 600: '#16a34a', 900: '#14532d' },
+                        navy: { 800: '#1e293b', 900: '#0f172a' }
                     }
                 }
             }
         }
     </script>
-</head>
-<body class="bg-gradient-to-br from-slate-100 to-slate-200 min-h-screen text-slate-800 font-sans pb-20">
-
-    <!-- Container Notifiche (Toast) -->
-    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
-
-    <div class="max-w-2xl mx-auto p-4 pt-6">
+    <style>
+        /* Nasconde la scrollbar mantenendo la funzionalità */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .tab-content { display: none; animation: fadeIn 0.3s ease-out forwards; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideInDown { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .toast-enter { animation: slideInDown 0.3s ease-out forwards; }
         
-        <!-- Header -->
-        <header class="bg-blue-900 text-white rounded-2xl shadow-lg p-6 mb-6 relative overflow-hidden">
-            <div class="absolute top-0 right-0 opacity-10 transform translate-x-4 -translate-y-4">
-                <i class="fas fa-cubes text-9xl"></i>
-            </div>
-            <div class="relative z-10">
-                <h1 class="text-3xl font-bold tracking-tight mb-1">Inventario</h1>
-                <p class="text-blue-200 font-medium text-sm"><span id="totalItems">0</span> materiali registrati</p>
-            </div>
-        </header>
+        /* Animazioni modale */
+        .modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .modal-content.active { transform: scale(1) translateY(0); opacity: 1; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen text-gray-800 font-sans pb-20 selection:bg-brand-100 selection:text-brand-900 overflow-x-hidden">
 
-        <!-- Pannello di Controllo (Aggiunta e Ricerca) -->
-        <div class="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-white p-5 mb-6">
-            
-            <!-- Form Aggiunta -->
-            <form id="materialForm" class="flex flex-col sm:flex-row gap-3 mb-4">
-                <div class="relative flex-1">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-tag text-gray-400"></i>
-                    </div>
-                    <input type="text" id="itemName" placeholder="Nome nuovo materiale..." required
-                        class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+    <!-- Header Fisso -->
+    <header class="bg-navy-900 text-white p-4 shadow-md sticky top-0 z-30">
+        <div class="max-w-3xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-brand-500 rounded-xl flex items-center justify-center shadow-lg">
+                    <i class="fas fa-hard-hat text-xl text-white"></i>
                 </div>
-                
-                <div class="flex gap-3">
-                    <div class="relative w-28">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i class="fas fa-hashtag text-gray-400"></i>
-                        </div>
-                        <input type="number" id="itemQty" placeholder="Qtà" required min="1" value="1"
-                            class="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-center font-semibold">
-                    </div>
-                    
-                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center gap-2 font-medium active:scale-95">
-                        <i class="fas fa-plus"></i> <span class="hidden sm:inline">Aggiungi</span>
-                    </button>
+                <div>
+                    <h1 class="text-xl font-bold leading-tight">Gestione Magazzino</h1>
+                    <p class="text-xs text-gray-400 font-medium">Logistica di Cantiere</p>
                 </div>
-            </form>
-
-            <!-- Barra di Ricerca -->
-            <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <i class="fas fa-search text-gray-400"></i>
-                </div>
-                <input type="text" id="searchInput" placeholder="Cerca materiale in magazzino..." 
-                    class="w-full pl-10 pr-4 py-2 bg-gray-100/50 border-none rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 transition-all text-sm">
             </div>
+            <button onclick="location.reload(true)" class="text-gray-400 hover:text-white p-2">
+                <i class="fas fa-sync-alt"></i>
+            </button>
         </div>
+    </header>
 
-        <!-- Lista Materiali -->
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden min-h-[300px]">
-            <ul id="materialList" class="divide-y divide-gray-100">
-                <!-- Elementi dinamici -->
-            </ul>
+    <!-- Sistema di Notifiche (Toast) -->
+    <div id="toast-container" class="fixed top-20 left-0 right-0 z-50 flex flex-col items-center gap-2 pointer-events-none px-4"></div>
+
+    <!-- MAIN CONTAINER -->
+    <main class="max-w-3xl mx-auto w-full p-4">
+        
+        <!-- ==================== TAB 1: MATERIALI ==================== -->
+        <section id="tab-materiali" class="tab-content active">
+            <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-boxes text-brand-500"></i> Gestione Materiali</h2>
             
-            <!-- Stato Vuoto -->
-            <div id="emptyState" class="hidden flex flex-col items-center justify-center py-16 px-4 text-center animate-fade-in">
-                <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mb-4 text-blue-300">
-                    <i class="fas fa-box-open text-4xl"></i>
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
+                <form id="form-materiale" class="flex flex-col gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nome Materiale</label>
+                        <input type="text" id="mat-nome" required placeholder="es. Cemento 25kg, Ponteggi..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Foto (opzionale)</label>
+                        <div class="relative w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl py-4 hover:bg-gray-100 transition cursor-pointer">
+                            <input type="file" id="mat-foto" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                            <div class="text-center" id="foto-preview-container">
+                                <i class="fas fa-camera text-2xl text-gray-400 mb-2"></i>
+                                <p class="text-sm text-gray-500 font-medium">Tocca per scattare o caricare</p>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="bg-navy-800 hover:bg-navy-900 text-white py-3 rounded-xl font-semibold shadow-md transition w-full mt-2">
+                        <i class="fas fa-plus mr-1"></i> Aggiungi Materiale
+                    </button>
+                </form>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="lista-materiali">
+                <!-- Rendering Dinamico -->
+            </div>
+        </section>
+
+        <!-- ==================== TAB 2: CANTIERI ==================== -->
+        <section id="tab-cantieri" class="tab-content">
+            <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-map-marker-alt text-brand-500"></i> Gestione Cantieri</h2>
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
+                <form id="form-cantiere" class="flex gap-2">
+                    <input type="text" id="cant-nome" required placeholder="Nome o indirizzo cantiere..." class="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition">
+                    <button type="submit" class="bg-navy-800 text-white px-5 py-3 rounded-xl font-semibold shadow-md hover:bg-navy-900 transition">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </form>
+            </div>
+
+            <ul id="lista-cantieri" class="space-y-3">
+                <!-- Rendering Dinamico -->
+            </ul>
+        </section>
+
+        <!-- ==================== TAB 3: MOVIMENTI ==================== -->
+        <section id="tab-movimenti" class="tab-content">
+            <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-exchange-alt text-brand-500"></i> Registra Movimento</h2>
+            
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+                <form id="form-movimento" class="flex flex-col gap-4">
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Data</label>
+                            <input type="date" id="mov-data" required class="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Tipo</label>
+                            <select id="mov-tipo" required class="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-medium">
+                                <option value="arrivo">📥 Arrivo (Fornitore)</option>
+                                <option value="spedizione">🚚 Spedizione verso Cantiere</option>
+                                <option value="rientro">↩️ Rientro da Cantiere</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Materiale</label>
+                        <select id="mov-materiale" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none">
+                            <option value="">Seleziona materiale...</option>
+                        </select>
+                    </div>
+
+                    <div id="container-cantiere" class="hidden">
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Cantiere Dest./Prov.</label>
+                        <select id="mov-cantiere" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none">
+                            <option value="">Seleziona cantiere...</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Quantità</label>
+                        <input type="number" id="mov-qta" required min="1" value="1" class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none text-xl font-bold text-center">
+                    </div>
+
+                    <button type="submit" class="bg-brand-600 hover:bg-brand-700 text-white py-4 rounded-xl font-bold shadow-md transition w-full mt-4 text-lg">
+                        <i class="fas fa-check-circle mr-2"></i> Conferma Movimento
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- ==================== TAB 4: REPORT AGGIORNATO ==================== -->
+        <section id="tab-report" class="tab-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-chart-pie text-brand-500"></i> Report Materiali</h2>
+                <button onclick="esportaPDF()" class="bg-navy-800 hover:bg-navy-900 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow transition flex items-center gap-1">
+                    <i class="fas fa-file-pdf text-red-400"></i> Globale
+                </button>
+            </div>
+            
+            <p class="text-sm text-gray-500 mb-4 px-1">Seleziona un materiale per visualizzare lo storico completo dei suoi movimenti.</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="griglia-report-materiali">
+                <!-- Rendering Dinamico (Griglia Materiali) -->
+            </div>
+        </section>
+    </main>
+
+    <!-- MODALE DETTAGLIO MOVIMENTI MATERIALE -->
+    <div id="modal-dettaglio" class="fixed inset-0 bg-navy-900/70 z-[60] flex flex-col items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300 backdrop-blur-sm" onclick="chiudiModal(event)">
+        <div id="modal-content" class="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[85vh] transform scale-95 translate-y-4 opacity-0 transition-all duration-300" onclick="event.stopPropagation()">
+            
+            <!-- Header Modal -->
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-2xl shrink-0">
+                <div class="flex items-center gap-3">
+                    <div id="modal-mat-foto" class="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center bg-gray-50 shadow-sm border border-gray-100"></div>
+                    <div>
+                        <h3 class="font-bold text-gray-800 text-lg leading-tight" id="modal-mat-nome">Nome</h3>
+                        <p class="text-xs font-bold text-brand-600 bg-brand-50 inline-block px-2 py-0.5 rounded-md mt-1 border border-brand-100" id="modal-mat-stock">Giacenza: 0</p>
+                    </div>
                 </div>
-                <h3 class="text-lg font-semibold text-gray-700">Nessun materiale trovato</h3>
-                <p class="text-gray-400 text-sm mt-1 max-w-xs">Il magazzino è vuoto oppure la ricerca non ha prodotto risultati.</p>
+                <button onclick="chiudiModal(event, true)" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition shadow-inner">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <!-- Body Modal (Tabella) -->
+            <div class="p-4 overflow-y-auto flex-1 no-scrollbar bg-gray-50">
+                <div class="overflow-hidden rounded-xl border border-gray-200 shadow-sm bg-white">
+                    <table class="w-full text-left text-sm whitespace-nowrap">
+                        <thead class="bg-gray-100 text-gray-600 uppercase text-[10px] tracking-wider">
+                            <tr>
+                                <th class="px-3 py-2">Data</th>
+                                <th class="px-3 py-2">Operazione</th>
+                                <th class="px-3 py-2">Cantiere</th>
+                                <th class="px-3 py-2 text-right">Q.tà</th>
+                            </tr>
+                        </thead>
+                        <tbody id="lista-movimenti-materiale" class="divide-y divide-gray-100">
+                            <!-- Dinamico -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="modal-vuoto" class="hidden py-10 text-center text-gray-400 flex-col items-center gap-2">
+                    <i class="fas fa-folder-open text-3xl opacity-50"></i>
+                    <p>Nessun movimento registrato.</p>
+                </div>
+            </div>
+
+            <!-- Footer Modal (PDF) -->
+            <div class="p-4 border-t border-gray-100 bg-white rounded-b-2xl shrink-0">
+                <button id="btn-scarica-pdf-singolo" class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold shadow-md shadow-red-200 transition flex justify-center items-center gap-2 active:scale-95">
+                    <i class="fas fa-file-pdf text-lg"></i> Esporta Storico Articolo
+                </button>
             </div>
         </div>
     </div>
 
-    <script>
-        // PWA Setup
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./service-worker.js').catch(err => console.log('SW Error:', err));
-            });
-        }
+    <!-- Bottom Navigation Bar -->
+    <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 pb-safe">
+        <div class="max-w-3xl mx-auto flex justify-around p-2">
+            <button onclick="switchTab('materiali')" class="nav-btn w-1/4 py-2 flex flex-col items-center gap-1 text-brand-600 transition" data-target="materiali">
+                <i class="fas fa-boxes text-xl"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Magazzino</span>
+            </button>
+            <button onclick="switchTab('cantieri')" class="nav-btn w-1/4 py-2 flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600 transition" data-target="cantieri">
+                <i class="fas fa-map-marker-alt text-xl"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Cantieri</span>
+            </button>
+            <button onclick="switchTab('movimenti')" class="nav-btn w-1/4 py-2 flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600 transition relative" data-target="movimenti">
+                <div class="absolute -top-4 bg-brand-500 text-white w-10 h-10 rounded-full flex items-center justify-center shadow-lg border-4 border-white">
+                    <i class="fas fa-plus text-lg"></i>
+                </div>
+                <span class="text-[10px] font-bold uppercase tracking-wider mt-5">Registra</span>
+            </button>
+            <button onclick="switchTab('report')" class="nav-btn w-1/4 py-2 flex flex-col items-center gap-1 text-gray-400 hover:text-gray-600 transition" data-target="report">
+                <i class="fas fa-chart-pie text-xl"></i>
+                <span class="text-[10px] font-bold uppercase tracking-wider">Report</span>
+            </button>
+        </div>
+    </nav>
 
-        // --- LOGICA APPLICAZIONE ---
-        const form = document.getElementById('materialForm');
-        const list = document.getElementById('materialList');
-        const emptyState = document.getElementById('emptyState');
-        const searchInput = document.getElementById('searchInput');
-        const totalItemsCounter = document.getElementById('totalItems');
-        const toastContainer = document.getElementById('toast-container');
-        
-        let materials = JSON.parse(localStorage.getItem('materials')) || [];
+    <script>
+        let materials = JSON.parse(localStorage.getItem('materials_v2')) || [];
+        let sites = JSON.parse(localStorage.getItem('sites')) || [];
+        let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
 
         function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
             const toast = document.createElement('div');
-            const colors = type === 'success' ? 'bg-green-500' : (type === 'error' ? 'bg-red-500' : 'bg-blue-500');
-            const icon = type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle');
+            const bg = type === 'success' ? 'bg-brand-600' : (type === 'error' ? 'bg-red-500' : 'bg-navy-800');
+            const icon = type === 'success' ? 'fa-check' : (type === 'error' ? 'fa-exclamation-triangle' : 'fa-info');
             
-            toast.className = `${colors} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slide-in text-sm font-medium`;
+            toast.className = `${bg} text-white px-5 py-3 rounded-full shadow-lg flex items-center gap-3 toast-enter text-sm font-semibold pointer-events-auto`;
             toast.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
             
-            toastContainer.appendChild(toast);
+            container.appendChild(toast);
             setTimeout(() => {
                 toast.style.opacity = '0';
-                toast.style.transform = 'translateY(-10px)';
+                toast.style.transform = 'translateY(-20px)';
                 toast.style.transition = 'all 0.3s ease';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
         }
 
-        function saveAndRender(searchTerm = '') {
-            localStorage.setItem('materials', JSON.stringify(materials));
-            renderList(searchTerm);
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if(btn.dataset.target === tabId) {
+                    btn.classList.add('text-brand-600');
+                    btn.classList.remove('text-gray-400');
+                } else {
+                    btn.classList.remove('text-brand-600');
+                    btn.classList.add('text-gray-400');
+                }
+            });
+
+            if(tabId === 'materiali') renderMaterials();
+            if(tabId === 'cantieri') renderSites();
+            if(tabId === 'movimenti') populateSelects();
+            if(tabId === 'report') renderReportGrid();
         }
 
-        function renderList(searchTerm = '') {
+        let tempBase64Photo = null;
+        const fotoInput = document.getElementById('mat-foto');
+        const previewContainer = document.getElementById('foto-preview-container');
+
+        fotoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_SIZE = 300; 
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                    } else {
+                        if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    tempBase64Photo = canvas.toDataURL('image/jpeg', 0.7);
+                    previewContainer.innerHTML = `<img src="${tempBase64Photo}" class="h-16 w-16 object-cover rounded-lg shadow border border-gray-200">`;
+                }
+                img.src = event.target.result;
+            }
+            reader.readAsDataURL(file);
+        });
+
+        function getStock(materialId) {
+            let stock = 0;
+            transactions.forEach(t => {
+                if (t.materialId === materialId) {
+                    if (t.type === 'arrivo' || t.type === 'rientro') stock += Number(t.quantity);
+                    if (t.type === 'spedizione') stock -= Number(t.quantity);
+                }
+            });
+            return stock;
+        }
+
+        function renderMaterials() {
+            const list = document.getElementById('lista-materiali');
             list.innerHTML = '';
             
-            // Filtro ricerca
-            const filteredMaterials = materials.filter(item => 
-                item.name.toLowerCase().includes(searchTerm.toLowerCase())
-            );
+            materials.forEach((m) => {
+                const stock = getStock(m.id);
+                const stockColor = stock <= 0 ? 'text-red-600 bg-red-100' : 'text-green-700 bg-green-100';
+                const photoHtml = m.photoBase64 
+                    ? `<img src="${m.photoBase64}" class="w-16 h-16 rounded-xl object-cover shadow-sm">`
+                    : `<div class="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400"><i class="fas fa-box text-2xl"></i></div>`;
 
-            // Aggiorna contatore
-            totalItemsCounter.innerText = materials.length;
+                const card = document.createElement('div');
+                card.className = "bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 relative overflow-hidden";
+                card.innerHTML = `
+                    ${photoHtml}
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-bold text-gray-800 truncate leading-tight">${m.name}</h3>
+                        <div class="mt-1 inline-block px-2 py-1 rounded-md ${stockColor} text-xs font-bold uppercase tracking-wide">
+                            Giacenza: ${stock}
+                        </div>
+                    </div>
+                `;
+                list.appendChild(card);
+            });
+        }
 
-            if (filteredMaterials.length === 0) {
+        document.getElementById('form-materiale').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('mat-nome').value.trim();
+            if(!name) return;
+
+            materials.push({
+                id: Date.now().toString(),
+                name: name,
+                photoBase64: tempBase64Photo
+            });
+            
+            localStorage.setItem('materials_v2', JSON.stringify(materials));
+            showToast('Materiale aggiunto in archivio');
+            
+            document.getElementById('mat-nome').value = '';
+            tempBase64Photo = null;
+            previewContainer.innerHTML = `<i class="fas fa-camera text-2xl text-gray-400 mb-2"></i><p class="text-sm text-gray-500 font-medium">Tocca per scattare o caricare</p>`;
+            document.getElementById('mat-foto').value = '';
+            
+            renderMaterials();
+        });
+
+        function renderSites() {
+            const list = document.getElementById('lista-cantieri');
+            list.innerHTML = '';
+            
+            sites.forEach((s) => {
+                const li = document.createElement('li');
+                li.className = "bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center";
+                li.innerHTML = `
+                    <span class="font-semibold text-gray-700 flex items-center gap-2"><i class="fas fa-hard-hat text-gray-400 text-sm"></i> ${s.name}</span>
+                    <button onclick="deleteSite('${s.id}')" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition flex items-center justify-center">
+                        <i class="fas fa-trash-alt text-sm"></i>
+                    </button>
+                `;
+                list.appendChild(li);
+            });
+        }
+
+        document.getElementById('form-cantiere').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('cant-nome').value.trim();
+            if(!name) return;
+
+            sites.push({ id: Date.now().toString(), name: name });
+            localStorage.setItem('sites', JSON.stringify(sites));
+            showToast('Cantiere registrato');
+            
+            document.getElementById('cant-nome').value = '';
+            renderSites();
+        });
+
+        window.deleteSite = (id) => {
+            sites = sites.filter(s => s.id !== id);
+            localStorage.setItem('sites', JSON.stringify(sites));
+            showToast('Cantiere rimosso', 'error');
+            renderSites();
+        }
+
+        const movTipo = document.getElementById('mov-tipo');
+        const cantiereContainer = document.getElementById('container-cantiere');
+        
+        movTipo.addEventListener('change', (e) => {
+            if(e.target.value === 'arrivo') {
+                cantiereContainer.classList.add('hidden');
+                document.getElementById('mov-cantiere').removeAttribute('required');
+            } else {
+                cantiereContainer.classList.remove('hidden');
+                document.getElementById('mov-cantiere').setAttribute('required', 'true');
+            }
+        });
+
+        function populateSelects() {
+            if(!document.getElementById('mov-data').value) {
+                document.getElementById('mov-data').value = new Date().toISOString().split('T')[0];
+            }
+
+            const matSelect = document.getElementById('mov-materiale');
+            matSelect.innerHTML = '<option value="">Seleziona materiale...</option>';
+            materials.forEach(m => {
+                matSelect.innerHTML += `<option value="${m.id}">${m.name} (Giacenza: ${getStock(m.id)})</option>`;
+            });
+
+            const siteSelect = document.getElementById('mov-cantiere');
+            siteSelect.innerHTML = '<option value="">Seleziona cantiere...</option>';
+            sites.forEach(s => {
+                siteSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`;
+            });
+        }
+
+        document.getElementById('form-movimento').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const date = document.getElementById('mov-data').value;
+            const type = document.getElementById('mov-tipo').value;
+            const materialId = document.getElementById('mov-materiale').value;
+            const siteId = document.getElementById('mov-cantiere').value;
+            const quantity = parseInt(document.getElementById('mov-qta').value);
+
+            if(type === 'spedizione' && getStock(materialId) < quantity) {
+                showToast("Errore: Quantità insufficiente in magazzino!", "error");
+                return;
+            }
+
+            transactions.push({
+                id: Date.now().toString(),
+                date, type, materialId, quantity,
+                siteId: type !== 'arrivo' ? siteId : null
+            });
+            
+            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+            localStorage.setItem('transactions', JSON.stringify(transactions));
+            
+            showToast('Movimento registrato con successo!');
+            document.getElementById('mov-qta').value = 1;
+            populateSelects(); 
+        });
+
+        function renderReportGrid() {
+            const grid = document.getElementById('griglia-report-materiali');
+            grid.innerHTML = '';
+
+            if (materials.length === 0) {
+                grid.innerHTML = `<div class="col-span-full p-8 text-center text-gray-400 bg-white rounded-xl border border-gray-100 border-dashed">Nessun materiale in archivio. Aggiungine uno dal Magazzino.</div>`;
+                return;
+            }
+
+            // Ordina materiali alfabeticamente
+            const sortedMaterials = [...materials].sort((a,b) => a.name.localeCompare(b.name));
+
+            sortedMaterials.forEach(m => {
+                const stock = getStock(m.id);
+                const photoHtml = m.photoBase64 
+                    ? `<img src="${m.photoBase64}" class="w-full h-full object-cover">`
+                    : `<i class="fas fa-box text-3xl text-gray-300"></i>`;
+                const stockColor = stock <= 0 ? 'text-red-600 bg-red-100 border-red-200' : 'text-brand-700 bg-brand-50 border-brand-200';
+
+                const card = document.createElement('div');
+                card.className = "bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3 cursor-pointer hover:shadow-md hover:border-brand-300 transition active:scale-95";
+                card.onclick = () => apriModalDettaglio(m.id);
+                
+                card.innerHTML = `
+                    <div class="w-14 h-14 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-100 shrink-0 shadow-inner">
+                        ${photoHtml}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-bold text-gray-800 truncate text-[15px]">${m.name}</h3>
+                        <div class="mt-1 inline-flex items-center px-2 py-0.5 rounded border ${stockColor} text-[10px] font-bold uppercase tracking-wide">
+                            Giacenza: ${stock}
+                        </div>
+                    </div>
+                    <div class="text-gray-300 shrink-0 pr-1">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        const modal = document.getElementById('modal-dettaglio');
+        const modalContent = document.getElementById('modal-content');
+
+        function apriModalDettaglio(materialId) {
+            const material = materials.find(m => m.id === materialId);
+            if(!material) return;
+            
+            const stock = getStock(materialId);
+
+            document.getElementById('modal-mat-nome').innerText = material.name;
+            document.getElementById('modal-mat-stock').innerText = `Giacenza Attuale: ${stock}`;
+            document.getElementById('modal-mat-foto').innerHTML = material.photoBase64 
+                ? `<img src="${material.photoBase64}" class="w-full h-full object-cover">`
+                : `<i class="fas fa-box text-gray-300 text-xl"></i>`;
+
+            const tbody = document.getElementById('lista-movimenti-materiale');
+            const emptyState = document.getElementById('modal-vuoto');
+            tbody.innerHTML = '';
+
+            const matTransactions = transactions.filter(t => t.materialId === materialId);
+
+            if (matTransactions.length === 0) {
                 emptyState.classList.remove('hidden');
                 emptyState.classList.add('flex');
+                tbody.parentElement.parentElement.classList.add('hidden');
             } else {
                 emptyState.classList.add('hidden');
                 emptyState.classList.remove('flex');
-                
-                filteredMaterials.forEach((item) => {
-                    // Troviamo l'indice reale nell'array originale per evitare bug quando si modifica filtrando
-                    const originalIndex = materials.findIndex(m => m.name === item.name);
-                    
-                    const li = document.createElement('li');
-                    li.className = "flex flex-col sm:flex-row sm:items-center justify-between p-4 hover:bg-gray-50 transition-colors animate-slide-in gap-4";
-                    
-                    // Stile visivo per le quantità basse
-                    const isLowStock = item.quantity === 0;
-                    const stockBadge = isLowStock ? 
-                        `<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-semibold ml-2">Esaurito</span>` : '';
+                tbody.parentElement.parentElement.classList.remove('hidden');
 
-                    li.innerHTML = `
-                        <div class="flex-1">
-                            <h4 class="font-semibold text-gray-800 text-lg flex items-center">${item.name} ${stockBadge}</h4>
-                            <p class="text-sm text-gray-500">ID: #${String(originalIndex + 1).padStart(4, '0')}</p>
-                        </div>
-                        
-                        <div class="flex items-center gap-1 bg-gray-100 rounded-lg p-1 border border-gray-200">
-                            <button onclick="updateQty(${originalIndex}, -1)" class="w-10 h-10 rounded-md bg-white text-gray-600 shadow-sm hover:text-red-600 hover:bg-red-50 transition-all focus:ring-2 focus:ring-red-200">
-                                <i class="fas fa-minus"></i>
-                            </button>
-                            
-                            <div class="w-14 text-center font-bold text-lg text-gray-800">
-                                ${item.quantity}
-                            </div>
-                            
-                            <button onclick="updateQty(${originalIndex}, 1)" class="w-10 h-10 rounded-md bg-white text-gray-600 shadow-sm hover:text-green-600 hover:bg-green-50 transition-all focus:ring-2 focus:ring-green-200">
-                                <i class="fas fa-plus"></i>
-                            </button>
-                        </div>
-                        
-                        <button onclick="deleteItem(${originalIndex})" class="w-10 h-10 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all sm:ml-2 mt-2 sm:mt-0 self-end sm:self-auto">
-                            <i class="fas fa-trash-alt"></i>
-                        </button>
+                matTransactions.forEach(t => {
+                    const site = sites.find(s => s.id === t.siteId)?.name || '-';
+                    
+                    let typeBadge = '';
+                    let qtyColor = 'text-gray-800';
+                    let qtyPrefix = '';
+                    
+                    if(t.type === 'arrivo') { typeBadge = '<span class="text-blue-600 font-bold"><i class="fas fa-arrow-down mr-1"></i>Arrivo</span>'; qtyColor='text-blue-600'; qtyPrefix='+'; }
+                    if(t.type === 'spedizione') { typeBadge = '<span class="text-orange-600 font-bold"><i class="fas fa-truck mr-1"></i>Sped.</span>'; qtyColor='text-orange-600'; qtyPrefix='-'; }
+                    if(t.type === 'rientro') { typeBadge = '<span class="text-green-600 font-bold"><i class="fas fa-undo mr-1"></i>Reso</span>'; qtyColor='text-brand-600'; qtyPrefix='+'; }
+
+                    const rawDate = new Date(t.date);
+                    const formatData = `${rawDate.getDate().toString().padStart(2, '0')}/${(rawDate.getMonth()+1).toString().padStart(2, '0')}/${rawDate.getFullYear().toString().slice(2)}`;
+
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="px-3 py-3 text-gray-500 font-mono text-xs whitespace-nowrap">${formatData}</td>
+                        <td class="px-3 py-3 text-xs">${typeBadge}</td>
+                        <td class="px-3 py-3 text-gray-700 text-xs truncate max-w-[90px]" title="${site}">${site}</td>
+                        <td class="px-3 py-3 font-bold ${qtyColor} text-right text-sm">${qtyPrefix}${t.quantity}</td>
                     `;
-                    list.appendChild(li);
+                    tbody.appendChild(tr);
                 });
             }
+
+            document.getElementById('btn-scarica-pdf-singolo').onclick = () => {
+                esportaPDF(materialId);
+            };
+
+            // Animazione Apertura Modale
+            modal.classList.add('modal-overlay', 'active');
+            modalContent.classList.add('modal-content', 'active');
+            document.body.style.overflow = 'hidden'; // Blocca scroll pagina sottostante
         }
 
-        // Eventi
-        form.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const nameInput = document.getElementById('itemName');
-            const qtyInput = document.getElementById('itemQty');
-            const name = nameInput.value.trim();
-            
-            // Controllo duplicati
-            const existingIndex = materials.findIndex(m => m.name.toLowerCase() === name.toLowerCase());
-            
-            if(existingIndex >= 0) {
-                materials[existingIndex].quantity += parseInt(qtyInput.value);
-                showToast(`Quantità aggiornata per ${name}`, 'info');
-            } else {
-                materials.push({
-                    name: name,
-                    quantity: parseInt(qtyInput.value)
-                });
-                showToast(`Materiale ${name} aggiunto`, 'success');
-            }
-            
-            nameInput.value = '';
-            qtyInput.value = '1';
-            nameInput.focus();
-            
-            // Resetta la ricerca quando si aggiunge
-            searchInput.value = ''; 
-            saveAndRender();
-        });
-
-        searchInput.addEventListener('input', (e) => {
-            renderList(e.target.value);
-        });
-
-        window.updateQty = (index, delta) => {
-            const oldQty = materials[index].quantity;
-            materials[index].quantity += delta;
-            
-            if (materials[index].quantity < 0) {
-                materials[index].quantity = 0;
-            }
-            
-            if (oldQty !== materials[index].quantity) {
-                saveAndRender(searchInput.value); // Mantiene il filtro attivo
+        window.chiudiModal = function(event, force = false) {
+            // Chiudi se si clicca fuori (overlay) o sul bottone X
+            if (force || event.target === modal) {
+                modal.classList.remove('active');
+                modalContent.classList.remove('active');
+                document.body.style.overflow = 'auto'; // Ripristina scroll
             }
         }
 
-        window.deleteItem = (index) => {
-            const itemName = materials[index].name;
-            if(confirm(`Sei sicuro di voler eliminare "${itemName}" dall'inventario?`)) {
-                materials.splice(index, 1);
-                showToast(`${itemName} eliminato`, 'error');
-                saveAndRender(searchInput.value);
+        window.esportaPDF = function(specificMaterialId = null) {
+            let dataToExport = transactions;
+            let docTitle = "EdilGest - Report Movimenti Globale";
+            let fileName = "Report_Globale_EdilGest";
+            
+            // Filtro se viene richiesto per singolo materiale
+            if(specificMaterialId) {
+                const mat = materials.find(m => m.id === specificMaterialId);
+                if(!mat) return;
+                dataToExport = transactions.filter(t => t.materialId === specificMaterialId);
+                docTitle = `EdilGest - Movimenti: ${mat.name}`;
+                fileName = `Storico_${mat.name.replace(/\s+/g, '_')}`;
             }
-        }
 
-        // Avvio
-        renderList();
+            if (dataToExport.length === 0) {
+                showToast("Nessun movimento da esportare per questa selezione.", "error");
+                return;
+            }
+            
+            showToast("Generazione PDF in corso...", "info");
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Intestazione PDF
+            doc.setFontSize(16);
+            doc.setTextColor(30, 41, 59); 
+            doc.text(docTitle, 14, 20);
+            
+            doc.setFontSize(10);
+            doc.setTextColor(100);
+            const dataOggi = new Date().toLocaleDateString('it-IT');
+            doc.text(`Data Generazione: ${dataOggi}`, 14, 28);
+
+            // Preparazione dati tabella
+            const tableData = dataToExport.map(t => {
+                const mat = materials.find(m => m.id === t.materialId)?.name || 'Eliminato';
+                const site = sites.find(s => s.id === t.siteId)?.name || '-';
+                
+                let tipoLabel = 'Arrivo';
+                let qtaPrefix = '+';
+                if(t.type === 'spedizione') { tipoLabel = 'Spedito a Cantiere'; qtaPrefix = '-'; }
+                if(t.type === 'rientro') { tipoLabel = 'Reso da Cantiere'; qtaPrefix = '+'; }
+
+                const rawDate = new Date(t.date);
+                const formatData = `${rawDate.getDate().toString().padStart(2, '0')}/${(rawDate.getMonth()+1).toString().padStart(2, '0')}/${rawDate.getFullYear()}`;
+
+                // Se è un report globale mostriamo la colonna Materiale, altrimenti no
+                if(specificMaterialId) {
+                    return [formatData, tipoLabel, site, `${qtaPrefix}${t.quantity}`];
+                } else {
+                    return [formatData, mat, tipoLabel, site, `${qtaPrefix}${t.quantity}`];
+                }
+            });
+
+            // Definizione intestazioni dinamiche
+            const headColumns = specificMaterialId 
+                ? [['Data', 'Operazione', 'Cantiere', 'Q.tà']] 
+                : [['Data', 'Materiale', 'Operazione', 'Cantiere', 'Q.tà']];
+
+            doc.autoTable({
+                head: headColumns,
+                body: tableData,
+                startY: 35,
+                styles: { font: 'helvetica', fontSize: 9 },
+                headStyles: { fillColor: [30, 41, 59] },
+                alternateRowStyles: { fillColor: [248, 250, 252] },
+                columnStyles: {
+                    // Allinea a destra la colonna quantità (ultima colonna)
+                    [headColumns[0].length - 1]: { halign: 'right', fontStyle: 'bold' } 
+                }
+            });
+
+            doc.save(`${fileName}_${dataOggi.replace(/\//g, '-')}.pdf`);
+            showToast("PDF Scaricato con successo!");
+        };
+
+        // Initialize
+        renderMaterials();
     </script>
 </body>
 </html>
