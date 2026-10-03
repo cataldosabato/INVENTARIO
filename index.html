@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gestione Magazzino PWA</title>
+    <title>Gestione Magazzino</title>
     
     <!-- PWA Meta -->
     <link rel="manifest" href="manifest.json">
@@ -19,6 +19,10 @@
     <!-- Librerie PDF (jsPDF + AutoTable) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+    <!-- Libreria Cropper.js per ritaglio immagini -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -48,11 +52,13 @@
         /* Animazioni modale */
         .modal-overlay.active { opacity: 1; pointer-events: auto; }
         .modal-content.active { transform: scale(1) translateY(0); opacity: 1; }
+
+        /* Fix per Cropper.js su mobile */
+        .cropper-container { max-height: 50vh; width: 100%; background-color: #f3f4f6; }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen text-gray-800 font-sans pb-20 selection:bg-brand-100 selection:text-brand-900 overflow-x-hidden">
 
-    <!-- Header Fisso -->
     <header class="bg-navy-900 text-white p-4 shadow-md sticky top-0 z-30">
         <div class="max-w-3xl mx-auto flex justify-between items-center">
             <div class="flex items-center gap-3">
@@ -64,42 +70,31 @@
                     <p class="text-xs text-gray-400 font-medium">Logistica di Cantiere</p>
                 </div>
             </div>
-            <button onclick="location.reload(true)" class="text-gray-400 hover:text-white p-2">
+            <button onclick="location.reload(true)" class="text-gray-400 hover:text-white p-2" title="Ricarica App">
                 <i class="fas fa-sync-alt"></i>
             </button>
         </div>
     </header>
 
-    <!-- Sistema di Notifiche (Toast) -->
     <div id="toast-container" class="fixed top-20 left-0 right-0 z-50 flex flex-col items-center gap-2 pointer-events-none px-4"></div>
 
     <!-- MAIN CONTAINER -->
     <main class="max-w-3xl mx-auto w-full p-4">
         
-        <!-- ==================== TAB 1: MATERIALI ==================== -->
         <section id="tab-materiali" class="tab-content active">
             <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-boxes text-brand-500"></i> Gestione Materiali</h2>
             
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
-                <form id="form-materiale" class="flex flex-col gap-4">
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nome Materiale</label>
-                        <input type="text" id="mat-nome" required placeholder="es. Cemento 25kg, Ponteggi..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition">
+                <form id="form-materiale" class="flex gap-2 items-end">
+                    <div class="flex-1">
+                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Nuovo Materiale</label>
+                        <input type="text" id="mat-nome" required placeholder="Es: Tubo PVC, Cemento..." class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition">
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Foto (opzionale)</label>
-                        <div class="relative w-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-gray-300 rounded-xl py-4 hover:bg-gray-100 transition cursor-pointer">
-                            <input type="file" id="mat-foto" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
-                            <div class="text-center" id="foto-preview-container">
-                                <i class="fas fa-camera text-2xl text-gray-400 mb-2"></i>
-                                <p class="text-sm text-gray-500 font-medium">Tocca per scattare o caricare</p>
-                            </div>
-                        </div>
-                    </div>
-                    <button type="submit" class="bg-navy-800 hover:bg-navy-900 text-white py-3 rounded-xl font-semibold shadow-md transition w-full mt-2">
-                        <i class="fas fa-plus mr-1"></i> Aggiungi Materiale
+                    <button type="submit" class="bg-navy-800 hover:bg-navy-900 text-white px-5 py-3 rounded-xl font-semibold shadow-md transition h-[46px] flex items-center justify-center">
+                        <i class="fas fa-plus"></i>
                     </button>
                 </form>
+                <p class="text-xs text-gray-400 mt-3"><i class="fas fa-info-circle"></i> Clicca sull'icona della fotocamera accanto a un materiale nella lista per aggiungere o modificare la foto.</p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="lista-materiali">
@@ -107,14 +102,13 @@
             </div>
         </section>
 
-        <!-- ==================== TAB 2: CANTIERI ==================== -->
         <section id="tab-cantieri" class="tab-content">
             <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-map-marker-alt text-brand-500"></i> Gestione Cantieri</h2>
             
             <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
                 <form id="form-cantiere" class="flex gap-2">
                     <input type="text" id="cant-nome" required placeholder="Nome o indirizzo cantiere..." class="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none transition">
-                    <button type="submit" class="bg-navy-800 text-white px-5 py-3 rounded-xl font-semibold shadow-md hover:bg-navy-900 transition">
+                    <button type="submit" class="bg-navy-800 text-white px-5 py-3 rounded-xl font-semibold shadow-md hover:bg-navy-900 transition flex items-center justify-center">
                         <i class="fas fa-plus"></i>
                     </button>
                 </form>
@@ -125,7 +119,6 @@
             </ul>
         </section>
 
-        <!-- ==================== TAB 3: MOVIMENTI ==================== -->
         <section id="tab-movimenti" class="tab-content">
             <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="fas fa-exchange-alt text-brand-500"></i> Registra Movimento</h2>
             
@@ -141,8 +134,8 @@
                             <label class="block text-xs font-semibold text-gray-500 uppercase mb-1">Tipo</label>
                             <select id="mov-tipo" required class="w-full px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-brand-500 outline-none font-medium">
                                 <option value="arrivo">📥 Arrivo (Fornitore)</option>
-                                <option value="spedizione">🚚 Spedizione verso Cantiere</option>
-                                <option value="rientro">↩️ Rientro da Cantiere</option>
+                                <option value="spedizione">🚚 Spedizione (Cantiere)</option>
+                                <option value="rientro">↩️ Reso (Da Cantiere)</option>
                             </select>
                         </div>
                     </div>
@@ -173,7 +166,6 @@
             </div>
         </section>
 
-        <!-- ==================== TAB 4: REPORT AGGIORNATO ==================== -->
         <section id="tab-report" class="tab-content">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2"><i class="fas fa-chart-pie text-brand-500"></i> Report Materiali</h2>
@@ -182,19 +174,57 @@
                 </button>
             </div>
             
-            <p class="text-sm text-gray-500 mb-4 px-1">Seleziona un materiale per visualizzare lo storico completo dei suoi movimenti.</p>
+            <p class="text-sm text-gray-500 mb-4 px-1">Seleziona un materiale per visualizzare lo storico completo.</p>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="griglia-report-materiali">
-                <!-- Rendering Dinamico (Griglia Materiali) -->
+                <!-- Rendering Dinamico -->
             </div>
         </section>
     </main>
 
-    <!-- MODALE DETTAGLIO MOVIMENTI MATERIALE -->
-    <div id="modal-dettaglio" class="fixed inset-0 bg-navy-900/70 z-[60] flex flex-col items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300 backdrop-blur-sm" onclick="chiudiModal(event)">
+    <div id="modal-editor" class="fixed inset-0 bg-navy-900/90 z-[70] flex flex-col items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300 backdrop-blur-md" onclick="chiudiEditor(event)">
+        <div id="modal-editor-content" class="bg-white w-full max-w-md rounded-2xl shadow-2xl flex flex-col transform scale-95 opacity-0 transition-all duration-300 overflow-hidden" onclick="event.stopPropagation()">
+            
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-gray-800">Modifica Foto Materiale</h3>
+                <button onclick="chiudiEditor(event, true)" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 hover:bg-gray-300 transition">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="p-4 flex-1 flex flex-col gap-4">
+                <!-- Contenitore immagine per Cropper -->
+                <div class="w-full h-64 bg-gray-100 rounded-xl overflow-hidden border-2 border-dashed border-gray-300 flex items-center justify-center relative">
+                    <img id="image-to-crop" src="" class="max-w-full max-h-full hidden">
+                    <div id="cropper-placeholder" class="text-center text-gray-400 pointer-events-none">
+                        <i class="fas fa-image text-4xl mb-2"></i>
+                        <p class="text-sm">Nessuna immagine</p>
+                    </div>
+                </div>
+
+                <!-- Strumenti Editor -->
+                <div class="flex gap-2 justify-center">
+                    <label class="flex-1 bg-navy-800 hover:bg-navy-900 text-white py-2 rounded-lg cursor-pointer text-center font-medium shadow-sm transition flex items-center justify-center gap-2">
+                        <i class="fas fa-upload"></i> Carica Foto
+                        <input type="file" id="upload-foto" accept="image/*" class="hidden">
+                    </label>
+                    <button onclick="ruotaImmagine()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium shadow-sm transition flex items-center gap-2" title="Ruota 90°">
+                        <i class="fas fa-undo-alt"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-4 border-t border-gray-100 bg-gray-50">
+                <button onclick="salvaFotoModificata()" class="w-full bg-brand-500 hover:bg-brand-600 text-white py-3 rounded-xl font-bold shadow-md transition flex justify-center items-center gap-2">
+                    <i class="fas fa-save"></i> Salva Immagine
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-dettaglio" class="fixed inset-0 bg-navy-900/70 z-[60] flex flex-col items-center justify-center p-4 opacity-0 pointer-events-none transition-opacity duration-300 backdrop-blur-sm" onclick="chiudiModalReport(event)">
         <div id="modal-content" class="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[85vh] transform scale-95 translate-y-4 opacity-0 transition-all duration-300" onclick="event.stopPropagation()">
             
-            <!-- Header Modal -->
             <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-white rounded-t-2xl shrink-0">
                 <div class="flex items-center gap-3">
                     <div id="modal-mat-foto" class="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center bg-gray-50 shadow-sm border border-gray-100"></div>
@@ -203,12 +233,11 @@
                         <p class="text-xs font-bold text-brand-600 bg-brand-50 inline-block px-2 py-0.5 rounded-md mt-1 border border-brand-100" id="modal-mat-stock">Giacenza: 0</p>
                     </div>
                 </div>
-                <button onclick="chiudiModal(event, true)" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition shadow-inner">
+                <button onclick="chiudiModalReport(event, true)" class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
             
-            <!-- Body Modal (Tabella) -->
             <div class="p-4 overflow-y-auto flex-1 no-scrollbar bg-gray-50">
                 <div class="overflow-hidden rounded-xl border border-gray-200 shadow-sm bg-white">
                     <table class="w-full text-left text-sm whitespace-nowrap">
@@ -220,9 +249,7 @@
                                 <th class="px-3 py-2 text-right">Q.tà</th>
                             </tr>
                         </thead>
-                        <tbody id="lista-movimenti-materiale" class="divide-y divide-gray-100">
-                            <!-- Dinamico -->
-                        </tbody>
+                        <tbody id="lista-movimenti-materiale" class="divide-y divide-gray-100"></tbody>
                     </table>
                 </div>
                 <div id="modal-vuoto" class="hidden py-10 text-center text-gray-400 flex-col items-center gap-2">
@@ -231,16 +258,14 @@
                 </div>
             </div>
 
-            <!-- Footer Modal (PDF) -->
             <div class="p-4 border-t border-gray-100 bg-white rounded-b-2xl shrink-0">
-                <button id="btn-scarica-pdf-singolo" class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold shadow-md shadow-red-200 transition flex justify-center items-center gap-2 active:scale-95">
-                    <i class="fas fa-file-pdf text-lg"></i> Esporta Storico Articolo
+                <button id="btn-scarica-pdf-singolo" class="w-full bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl font-bold shadow-md shadow-red-200 transition flex justify-center items-center gap-2">
+                    <i class="fas fa-file-pdf text-lg"></i> Esporta Storico
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Bottom Navigation Bar -->
     <nav class="fixed bottom-0 w-full bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 pb-safe">
         <div class="max-w-3xl mx-auto flex justify-around p-2">
             <button onclick="switchTab('materiali')" class="nav-btn w-1/4 py-2 flex flex-col items-center gap-1 text-brand-600 transition" data-target="materiali">
@@ -265,9 +290,13 @@
     </nav>
 
     <script>
-        let materials = JSON.parse(localStorage.getItem('materials_v2')) || [];
-        let sites = JSON.parse(localStorage.getItem('sites')) || [];
-        let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+        // Uso una nuova chiave localStorage (v3) per assicurare dati puliti
+        let materials = JSON.parse(localStorage.getItem('materials_v3')) || [];
+        let sites = JSON.parse(localStorage.getItem('sites_v2')) || [];
+        let transactions = JSON.parse(localStorage.getItem('transactions_v2')) || [];
+
+        let currentEditingMaterialId = null;
+        let cropperInstance = null;
 
         function showToast(message, type = 'success') {
             const container = document.getElementById('toast-container');
@@ -275,7 +304,7 @@
             const bg = type === 'success' ? 'bg-brand-600' : (type === 'error' ? 'bg-red-500' : 'bg-navy-800');
             const icon = type === 'success' ? 'fa-check' : (type === 'error' ? 'fa-exclamation-triangle' : 'fa-info');
             
-            toast.className = `${bg} text-white px-5 py-3 rounded-full shadow-lg flex items-center gap-3 toast-enter text-sm font-semibold pointer-events-auto`;
+            toast.className = `${bg} text-white px-5 py-3 rounded-full shadow-lg flex items-center gap-3 toast-enter text-sm font-semibold pointer-events-auto mt-2`;
             toast.innerHTML = `<i class="fas ${icon}"></i> ${message}`;
             
             container.appendChild(toast);
@@ -307,42 +336,6 @@
             if(tabId === 'report') renderReportGrid();
         }
 
-        let tempBase64Photo = null;
-        const fotoInput = document.getElementById('mat-foto');
-        const previewContainer = document.getElementById('foto-preview-container');
-
-        fotoInput.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                const img = new Image();
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const MAX_SIZE = 300; 
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                        if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-                    } else {
-                        if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    
-                    tempBase64Photo = canvas.toDataURL('image/jpeg', 0.7);
-                    previewContainer.innerHTML = `<img src="${tempBase64Photo}" class="h-16 w-16 object-cover rounded-lg shadow border border-gray-200">`;
-                }
-                img.src = event.target.result;
-            }
-            reader.readAsDataURL(file);
-        });
-
         function getStock(materialId) {
             let stock = 0;
             transactions.forEach(t => {
@@ -361,20 +354,30 @@
             materials.forEach((m) => {
                 const stock = getStock(m.id);
                 const stockColor = stock <= 0 ? 'text-red-600 bg-red-100' : 'text-green-700 bg-green-100';
+                
+                // Creiamo l'elemento immagine cliccabile
                 const photoHtml = m.photoBase64 
-                    ? `<img src="${m.photoBase64}" class="w-16 h-16 rounded-xl object-cover shadow-sm">`
-                    : `<div class="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-gray-400"><i class="fas fa-box text-2xl"></i></div>`;
+                    ? `<img src="${m.photoBase64}" class="w-full h-full object-cover">`
+                    : `<i class="fas fa-camera text-2xl text-gray-300 group-hover:text-white transition"></i>`;
 
                 const card = document.createElement('div');
-                card.className = "bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4 relative overflow-hidden";
+                card.className = "bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4";
                 card.innerHTML = `
-                    ${photoHtml}
+                    <div onclick="apriEditor('${m.id}')" class="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200 cursor-pointer group shadow-inner shrink-0">
+                        ${photoHtml}
+                        <div class="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <i class="fas fa-pencil-alt text-white"></i>
+                        </div>
+                    </div>
                     <div class="flex-1 min-w-0">
                         <h3 class="font-bold text-gray-800 truncate leading-tight">${m.name}</h3>
                         <div class="mt-1 inline-block px-2 py-1 rounded-md ${stockColor} text-xs font-bold uppercase tracking-wide">
                             Giacenza: ${stock}
                         </div>
                     </div>
+                    <button onclick="eliminaMateriale('${m.id}')" class="w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition">
+                         <i class="fas fa-trash-alt text-sm"></i>
+                    </button>
                 `;
                 list.appendChild(card);
             });
@@ -388,34 +391,134 @@
             materials.push({
                 id: Date.now().toString(),
                 name: name,
-                photoBase64: tempBase64Photo
+                photoBase64: null // La foto si aggiunge dopo dall'editor
             });
             
-            localStorage.setItem('materials_v2', JSON.stringify(materials));
-            showToast('Materiale aggiunto in archivio');
-            
+            localStorage.setItem('materials_v3', JSON.stringify(materials));
+            showToast('Materiale aggiunto. Clicca sull\'icona per aggiungere una foto.');
             document.getElementById('mat-nome').value = '';
-            tempBase64Photo = null;
-            previewContainer.innerHTML = `<i class="fas fa-camera text-2xl text-gray-400 mb-2"></i><p class="text-sm text-gray-500 font-medium">Tocca per scattare o caricare</p>`;
-            document.getElementById('mat-foto').value = '';
-            
             renderMaterials();
         });
+
+        window.eliminaMateriale = (id) => {
+            if(confirm("Sei sicuro di voler eliminare questo materiale? Tutti i movimenti collegati verranno persi.")) {
+                materials = materials.filter(m => m.id !== id);
+                transactions = transactions.filter(t => t.materialId !== id);
+                localStorage.setItem('materials_v3', JSON.stringify(materials));
+                localStorage.setItem('transactions_v2', JSON.stringify(transactions));
+                showToast('Materiale eliminato', 'error');
+                renderMaterials();
+            }
+        }
+
+        const modalEditor = document.getElementById('modal-editor');
+        const modalEditorContent = document.getElementById('modal-editor-content');
+        const imageToCrop = document.getElementById('image-to-crop');
+        const cropperPlaceholder = document.getElementById('cropper-placeholder');
+        const uploadFotoInput = document.getElementById('upload-foto');
+
+        window.apriEditor = (materialId) => {
+            currentEditingMaterialId = materialId;
+            const mat = materials.find(m => m.id === materialId);
+            
+            modalEditor.classList.add('modal-overlay', 'active');
+            modalEditorContent.classList.add('modal-content', 'active');
+            
+            inizializzaCropperConImmagine(mat.photoBase64);
+        }
+
+        window.chiudiEditor = (event, force = false) => {
+            if (force || event.target === modalEditor) {
+                modalEditor.classList.remove('active');
+                modalEditorContent.classList.remove('active');
+                if (cropperInstance) {
+                    cropperInstance.destroy();
+                    cropperInstance = null;
+                }
+                uploadFotoInput.value = ''; // Reset input
+            }
+        }
+
+        function inizializzaCropperConImmagine(src) {
+            if (cropperInstance) {
+                cropperInstance.destroy();
+                cropperInstance = null;
+            }
+
+            if (src) {
+                imageToCrop.src = src;
+                imageToCrop.classList.remove('hidden');
+                cropperPlaceholder.classList.add('hidden');
+                
+                cropperInstance = new Cropper(imageToCrop, {
+                    aspectRatio: 1, // Ritaglio quadrato
+                    viewMode: 1,
+                    dragMode: 'move',
+                    background: false,
+                    autoCropArea: 1,
+                    cropBoxResizable: true
+                });
+            } else {
+                imageToCrop.src = '';
+                imageToCrop.classList.add('hidden');
+                cropperPlaceholder.classList.remove('hidden');
+            }
+        }
+
+        uploadFotoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                inizializzaCropperConImmagine(event.target.result);
+            }
+            reader.readAsDataURL(file);
+        });
+
+        window.ruotaImmagine = () => {
+            if(cropperInstance) {
+                cropperInstance.rotate(90);
+            }
+        }
+
+        window.salvaFotoModificata = () => {
+            if(!currentEditingMaterialId) return;
+
+            if (cropperInstance) {
+                // Ottieni il canvas ritagliato compresso
+                const canvas = cropperInstance.getCroppedCanvas({ width: 400, height: 400 });
+                const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+                
+                // Aggiorna array materiali
+                const matIndex = materials.findIndex(m => m.id === currentEditingMaterialId);
+                if(matIndex > -1) {
+                    materials[matIndex].photoBase64 = base64Image;
+                    localStorage.setItem('materials_v3', JSON.stringify(materials));
+                    showToast('Immagine salvata con successo!');
+                    chiudiEditor(null, true);
+                    
+                    // Ricarica la vista corrente
+                    if(document.getElementById('tab-materiali').classList.contains('active')) renderMaterials();
+                    if(document.getElementById('tab-report').classList.contains('active')) renderReportGrid();
+                }
+            } else {
+                showToast('Nessuna immagine da salvare', 'error');
+            }
+        }
 
         function renderSites() {
             const list = document.getElementById('lista-cantieri');
             list.innerHTML = '';
-            
             sites.forEach((s) => {
-                const li = document.createElement('li');
-                li.className = "bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center";
-                li.innerHTML = `
-                    <span class="font-semibold text-gray-700 flex items-center gap-2"><i class="fas fa-hard-hat text-gray-400 text-sm"></i> ${s.name}</span>
-                    <button onclick="deleteSite('${s.id}')" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition flex items-center justify-center">
-                        <i class="fas fa-trash-alt text-sm"></i>
-                    </button>
+                list.innerHTML += `
+                    <li class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                        <span class="font-semibold text-gray-700 flex items-center gap-2"><i class="fas fa-hard-hat text-gray-400"></i> ${s.name}</span>
+                        <button onclick="deleteSite('${s.id}')" class="w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 flex items-center justify-center transition">
+                            <i class="fas fa-trash-alt text-sm"></i>
+                        </button>
+                    </li>
                 `;
-                list.appendChild(li);
             });
         }
 
@@ -423,18 +526,16 @@
             e.preventDefault();
             const name = document.getElementById('cant-nome').value.trim();
             if(!name) return;
-
             sites.push({ id: Date.now().toString(), name: name });
-            localStorage.setItem('sites', JSON.stringify(sites));
+            localStorage.setItem('sites_v2', JSON.stringify(sites));
             showToast('Cantiere registrato');
-            
             document.getElementById('cant-nome').value = '';
             renderSites();
         });
 
         window.deleteSite = (id) => {
             sites = sites.filter(s => s.id !== id);
-            localStorage.setItem('sites', JSON.stringify(sites));
+            localStorage.setItem('sites_v2', JSON.stringify(sites));
             showToast('Cantiere rimosso', 'error');
             renderSites();
         }
@@ -453,26 +554,17 @@
         });
 
         function populateSelects() {
-            if(!document.getElementById('mov-data').value) {
-                document.getElementById('mov-data').value = new Date().toISOString().split('T')[0];
-            }
-
+            if(!document.getElementById('mov-data').value) document.getElementById('mov-data').value = new Date().toISOString().split('T')[0];
             const matSelect = document.getElementById('mov-materiale');
             matSelect.innerHTML = '<option value="">Seleziona materiale...</option>';
-            materials.forEach(m => {
-                matSelect.innerHTML += `<option value="${m.id}">${m.name} (Giacenza: ${getStock(m.id)})</option>`;
-            });
-
+            materials.forEach(m => { matSelect.innerHTML += `<option value="${m.id}">${m.name} (Giacenza: ${getStock(m.id)})</option>`; });
             const siteSelect = document.getElementById('mov-cantiere');
             siteSelect.innerHTML = '<option value="">Seleziona cantiere...</option>';
-            sites.forEach(s => {
-                siteSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`;
-            });
+            sites.forEach(s => { siteSelect.innerHTML += `<option value="${s.id}">${s.name}</option>`; });
         }
 
         document.getElementById('form-movimento').addEventListener('submit', (e) => {
             e.preventDefault();
-            
             const date = document.getElementById('mov-data').value;
             const type = document.getElementById('mov-tipo').value;
             const materialId = document.getElementById('mov-materiale').value;
@@ -484,14 +576,9 @@
                 return;
             }
 
-            transactions.push({
-                id: Date.now().toString(),
-                date, type, materialId, quantity,
-                siteId: type !== 'arrivo' ? siteId : null
-            });
-            
+            transactions.push({ id: Date.now().toString(), date, type, materialId, quantity, siteId: type !== 'arrivo' ? siteId : null });
             transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
-            localStorage.setItem('transactions', JSON.stringify(transactions));
+            localStorage.setItem('transactions_v2', JSON.stringify(transactions));
             
             showToast('Movimento registrato con successo!');
             document.getElementById('mov-qta').value = 1;
@@ -503,24 +590,21 @@
             grid.innerHTML = '';
 
             if (materials.length === 0) {
-                grid.innerHTML = `<div class="col-span-full p-8 text-center text-gray-400 bg-white rounded-xl border border-gray-100 border-dashed">Nessun materiale in archivio. Aggiungine uno dal Magazzino.</div>`;
+                grid.innerHTML = `<div class="col-span-full p-8 text-center text-gray-400 bg-white rounded-xl border border-gray-100 border-dashed">Nessun materiale in archivio.</div>`;
                 return;
             }
 
-            // Ordina materiali alfabeticamente
             const sortedMaterials = [...materials].sort((a,b) => a.name.localeCompare(b.name));
-
             sortedMaterials.forEach(m => {
                 const stock = getStock(m.id);
                 const photoHtml = m.photoBase64 
                     ? `<img src="${m.photoBase64}" class="w-full h-full object-cover">`
-                    : `<i class="fas fa-box text-3xl text-gray-300"></i>`;
+                    : `<i class="fas fa-box text-2xl text-gray-300"></i>`;
                 const stockColor = stock <= 0 ? 'text-red-600 bg-red-100 border-red-200' : 'text-brand-700 bg-brand-50 border-brand-200';
 
                 const card = document.createElement('div');
-                card.className = "bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3 cursor-pointer hover:shadow-md hover:border-brand-300 transition active:scale-95";
-                card.onclick = () => apriModalDettaglio(m.id);
-                
+                card.className = "bg-white p-3 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-3 cursor-pointer hover:shadow-md transition active:scale-95";
+                card.onclick = () => apriModalReport(m.id);
                 card.innerHTML = `
                     <div class="w-14 h-14 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-100 shrink-0 shadow-inner">
                         ${photoHtml}
@@ -531,28 +615,22 @@
                             Giacenza: ${stock}
                         </div>
                     </div>
-                    <div class="text-gray-300 shrink-0 pr-1">
-                        <i class="fas fa-chevron-right"></i>
-                    </div>
+                    <div class="text-gray-300 shrink-0 pr-1"><i class="fas fa-chevron-right"></i></div>
                 `;
                 grid.appendChild(card);
             });
         }
 
-        const modal = document.getElementById('modal-dettaglio');
+        const modalDettaglio = document.getElementById('modal-dettaglio');
         const modalContent = document.getElementById('modal-content');
 
-        function apriModalDettaglio(materialId) {
+        function apriModalReport(materialId) {
             const material = materials.find(m => m.id === materialId);
             if(!material) return;
             
-            const stock = getStock(materialId);
-
             document.getElementById('modal-mat-nome').innerText = material.name;
-            document.getElementById('modal-mat-stock').innerText = `Giacenza Attuale: ${stock}`;
-            document.getElementById('modal-mat-foto').innerHTML = material.photoBase64 
-                ? `<img src="${material.photoBase64}" class="w-full h-full object-cover">`
-                : `<i class="fas fa-box text-gray-300 text-xl"></i>`;
+            document.getElementById('modal-mat-stock').innerText = `Giacenza Attuale: ${getStock(materialId)}`;
+            document.getElementById('modal-mat-foto').innerHTML = material.photoBase64 ? `<img src="${material.photoBase64}" class="w-full h-full object-cover">` : `<i class="fas fa-box text-gray-300"></i>`;
 
             const tbody = document.getElementById('lista-movimenti-materiale');
             const emptyState = document.getElementById('modal-vuoto');
@@ -561,136 +639,89 @@
             const matTransactions = transactions.filter(t => t.materialId === materialId);
 
             if (matTransactions.length === 0) {
-                emptyState.classList.remove('hidden');
-                emptyState.classList.add('flex');
+                emptyState.classList.remove('hidden'); emptyState.classList.add('flex');
                 tbody.parentElement.parentElement.classList.add('hidden');
             } else {
-                emptyState.classList.add('hidden');
-                emptyState.classList.remove('flex');
+                emptyState.classList.add('hidden'); emptyState.classList.remove('flex');
                 tbody.parentElement.parentElement.classList.remove('hidden');
 
                 matTransactions.forEach(t => {
                     const site = sites.find(s => s.id === t.siteId)?.name || '-';
-                    
-                    let typeBadge = '';
-                    let qtyColor = 'text-gray-800';
-                    let qtyPrefix = '';
-                    
-                    if(t.type === 'arrivo') { typeBadge = '<span class="text-blue-600 font-bold"><i class="fas fa-arrow-down mr-1"></i>Arrivo</span>'; qtyColor='text-blue-600'; qtyPrefix='+'; }
-                    if(t.type === 'spedizione') { typeBadge = '<span class="text-orange-600 font-bold"><i class="fas fa-truck mr-1"></i>Sped.</span>'; qtyColor='text-orange-600'; qtyPrefix='-'; }
-                    if(t.type === 'rientro') { typeBadge = '<span class="text-green-600 font-bold"><i class="fas fa-undo mr-1"></i>Reso</span>'; qtyColor='text-brand-600'; qtyPrefix='+'; }
+                    let badge = '', color = '', prefix = '';
+                    if(t.type === 'arrivo') { badge='<i class="fas fa-arrow-down mr-1"></i>Arrivo'; color='text-blue-600'; prefix='+'; }
+                    if(t.type === 'spedizione') { badge='<i class="fas fa-truck mr-1"></i>Sped.'; color='text-orange-600'; prefix='-'; }
+                    if(t.type === 'rientro') { badge='<i class="fas fa-undo mr-1"></i>Reso'; color='text-brand-600'; prefix='+'; }
 
                     const rawDate = new Date(t.date);
-                    const formatData = `${rawDate.getDate().toString().padStart(2, '0')}/${(rawDate.getMonth()+1).toString().padStart(2, '0')}/${rawDate.getFullYear().toString().slice(2)}`;
-
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td class="px-3 py-3 text-gray-500 font-mono text-xs whitespace-nowrap">${formatData}</td>
-                        <td class="px-3 py-3 text-xs">${typeBadge}</td>
+                    const fData = `${rawDate.getDate().toString().padStart(2,'0')}/${(rawDate.getMonth()+1).toString().padStart(2,'0')}/${rawDate.getFullYear().toString().slice(2)}`;
+                    tbody.innerHTML += `<tr>
+                        <td class="px-3 py-3 text-gray-500 font-mono text-xs">${fData}</td>
+                        <td class="px-3 py-3 text-xs font-bold ${color}">${badge}</td>
                         <td class="px-3 py-3 text-gray-700 text-xs truncate max-w-[90px]" title="${site}">${site}</td>
-                        <td class="px-3 py-3 font-bold ${qtyColor} text-right text-sm">${qtyPrefix}${t.quantity}</td>
-                    `;
-                    tbody.appendChild(tr);
+                        <td class="px-3 py-3 font-bold ${color} text-right text-sm">${prefix}${t.quantity}</td>
+                    </tr>`;
                 });
             }
 
-            document.getElementById('btn-scarica-pdf-singolo').onclick = () => {
-                esportaPDF(materialId);
-            };
-
-            // Animazione Apertura Modale
-            modal.classList.add('modal-overlay', 'active');
+            document.getElementById('btn-scarica-pdf-singolo').onclick = () => esportaPDF(materialId);
+            
+            modalDettaglio.classList.add('modal-overlay', 'active');
             modalContent.classList.add('modal-content', 'active');
-            document.body.style.overflow = 'hidden'; // Blocca scroll pagina sottostante
         }
 
-        window.chiudiModal = function(event, force = false) {
-            // Chiudi se si clicca fuori (overlay) o sul bottone X
-            if (force || event.target === modal) {
-                modal.classList.remove('active');
+        window.chiudiModalReport = function(event, force = false) {
+            if (force || event.target === modalDettaglio) {
+                modalDettaglio.classList.remove('active');
                 modalContent.classList.remove('active');
-                document.body.style.overflow = 'auto'; // Ripristina scroll
             }
         }
 
         window.esportaPDF = function(specificMaterialId = null) {
             let dataToExport = transactions;
-            let docTitle = "EdilGest - Report Movimenti Globale";
-            let fileName = "Report_Globale_EdilGest";
+            let docTitle = "Report Movimenti Globale";
+            let fileName = "Report_Globale";
             
-            // Filtro se viene richiesto per singolo materiale
             if(specificMaterialId) {
                 const mat = materials.find(m => m.id === specificMaterialId);
-                if(!mat) return;
                 dataToExport = transactions.filter(t => t.materialId === specificMaterialId);
-                docTitle = `EdilGest - Movimenti: ${mat.name}`;
+                docTitle = `Movimenti: ${mat.name}`;
                 fileName = `Storico_${mat.name.replace(/\s+/g, '_')}`;
             }
 
-            if (dataToExport.length === 0) {
-                showToast("Nessun movimento da esportare per questa selezione.", "error");
-                return;
-            }
+            if (dataToExport.length === 0) return showToast("Nessun movimento da esportare.", "error");
             
             showToast("Generazione PDF in corso...", "info");
-            
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             
-            // Intestazione PDF
-            doc.setFontSize(16);
-            doc.setTextColor(30, 41, 59); 
-            doc.text(docTitle, 14, 20);
-            
-            doc.setFontSize(10);
-            doc.setTextColor(100);
+            doc.setFontSize(16); doc.text(docTitle, 14, 20);
+            doc.setFontSize(10); doc.setTextColor(100);
             const dataOggi = new Date().toLocaleDateString('it-IT');
             doc.text(`Data Generazione: ${dataOggi}`, 14, 28);
 
-            // Preparazione dati tabella
             const tableData = dataToExport.map(t => {
-                const mat = materials.find(m => m.id === t.materialId)?.name || 'Eliminato';
+                const mat = materials.find(m => m.id === t.materialId)?.name || '-';
                 const site = sites.find(s => s.id === t.siteId)?.name || '-';
-                
-                let tipoLabel = 'Arrivo';
-                let qtaPrefix = '+';
-                if(t.type === 'spedizione') { tipoLabel = 'Spedito a Cantiere'; qtaPrefix = '-'; }
-                if(t.type === 'rientro') { tipoLabel = 'Reso da Cantiere'; qtaPrefix = '+'; }
-
-                const rawDate = new Date(t.date);
-                const formatData = `${rawDate.getDate().toString().padStart(2, '0')}/${(rawDate.getMonth()+1).toString().padStart(2, '0')}/${rawDate.getFullYear()}`;
-
-                // Se è un report globale mostriamo la colonna Materiale, altrimenti no
-                if(specificMaterialId) {
-                    return [formatData, tipoLabel, site, `${qtaPrefix}${t.quantity}`];
-                } else {
-                    return [formatData, mat, tipoLabel, site, `${qtaPrefix}${t.quantity}`];
-                }
+                let tipo = 'Arrivo', pref = '+';
+                if(t.type === 'spedizione') { tipo = 'Spedito a Cantiere'; pref = '-'; }
+                if(t.type === 'rientro') { tipo = 'Reso da Cantiere'; pref = '+'; }
+                const rd = new Date(t.date);
+                const fd = `${rd.getDate().toString().padStart(2,'0')}/${(rd.getMonth()+1).toString().padStart(2,'0')}/${rd.getFullYear()}`;
+                return specificMaterialId ? [fd, tipo, site, `${pref}${t.quantity}`] : [fd, mat, tipo, site, `${pref}${t.quantity}`];
             });
 
-            // Definizione intestazioni dinamiche
-            const headColumns = specificMaterialId 
-                ? [['Data', 'Operazione', 'Cantiere', 'Q.tà']] 
-                : [['Data', 'Materiale', 'Operazione', 'Cantiere', 'Q.tà']];
+            const headColumns = specificMaterialId ? [['Data', 'Operazione', 'Cantiere', 'Q.tà']] : [['Data', 'Materiale', 'Operazione', 'Cantiere', 'Q.tà']];
 
             doc.autoTable({
-                head: headColumns,
-                body: tableData,
-                startY: 35,
-                styles: { font: 'helvetica', fontSize: 9 },
-                headStyles: { fillColor: [30, 41, 59] },
-                alternateRowStyles: { fillColor: [248, 250, 252] },
-                columnStyles: {
-                    // Allinea a destra la colonna quantità (ultima colonna)
-                    [headColumns[0].length - 1]: { halign: 'right', fontStyle: 'bold' } 
-                }
+                head: headColumns, body: tableData, startY: 35, styles: { font: 'helvetica', fontSize: 9 },
+                headStyles: { fillColor: [30, 41, 59] }, columnStyles: { [headColumns[0].length - 1]: { halign: 'right', fontStyle: 'bold' } }
             });
 
             doc.save(`${fileName}_${dataOggi.replace(/\//g, '-')}.pdf`);
-            showToast("PDF Scaricato con successo!");
+            showToast("PDF Scaricato!");
         };
 
-        // Initialize
+        // Inizializzazione
         renderMaterials();
     </script>
 </body>
